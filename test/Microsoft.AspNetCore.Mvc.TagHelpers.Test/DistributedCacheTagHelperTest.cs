@@ -21,6 +21,7 @@ using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Internal;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using Microsoft.Extensions.WebEncoders.Testing;
 using Moq;
 using Xunit;
@@ -777,7 +778,11 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
 
         private static IDistributedCacheTagHelperStorage GetStorage(MemoryCacheOptions options = null)
         {
-            return new DistributedCacheTagHelperStorage(new MemoryDistributedCache(new MemoryCache(options ?? new MemoryCacheOptions())));
+            var selector = new DistributedCacheSelector(
+                new MemoryDistributedCache(new MemoryCache(options ?? new MemoryCacheOptions())),
+                Mock.Of<IOptionsMonitor<MemoryCacheOptions>>());
+
+            return new DistributedCacheTagHelperStorage(selector);
         }
 
         private static IDistributedCacheTagHelperFormatter GetFormatter()

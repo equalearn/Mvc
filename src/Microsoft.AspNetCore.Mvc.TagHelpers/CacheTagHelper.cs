@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Html;
 using Microsoft.AspNetCore.Mvc.TagHelpers.Cache;
+using Microsoft.AspNetCore.Mvc.TagHelpers.Internal;
 using Microsoft.AspNetCore.Mvc.ViewFeatures.Internal;
 using Microsoft.AspNetCore.Razor.TagHelpers;
 using Microsoft.Extensions.Caching.Memory;
@@ -32,11 +33,12 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
         /// <summary>
         /// Creates a new <see cref="CacheTagHelper"/>.
         /// </summary>
-        /// <param name="memoryCache">The <see cref="IMemoryCache"/>.</param>
+        /// <param name="factory">The factory containing the private <see cref="IMemoryCache"/> instance
+        /// used by the <see cref="CacheTagHelper"/>.</param>
         /// <param name="htmlEncoder">The <see cref="HtmlEncoder"/> to use.</param>
-        public CacheTagHelper(IMemoryCache memoryCache, HtmlEncoder htmlEncoder) : base(htmlEncoder)
+        public CacheTagHelper(CacheTagHelperMemoryCacheFactory factory, HtmlEncoder htmlEncoder) : base(htmlEncoder)
         {
-            MemoryCache = memoryCache;
+            MemoryCache = factory.Cache;
         }
 
         /// <summary>
@@ -71,9 +73,7 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
 
                 while (content == null)
                 {
-                    Task<IHtmlContent> result;
-
-                    if (!MemoryCache.TryGetValue(cacheKey, out result))
+                    if (!MemoryCache.TryGetValue(cacheKey, out Task<IHtmlContent> result))
                     {
                         var tokenSource = new CancellationTokenSource();
 
@@ -103,19 +103,20 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
 
                                 result = ProcessContentAsync(output);
 
+                                content = await result;
+                                var size = GetSize(content);
+                                /* TODO: Set the size of the item on the options */
                                 entry.SetOptions(options);
                                 entry.Value = result;
-
-                                content = await result;
                             }
-                            
+
                             tcs.SetResult(content);
                         }
                         catch
                         {
                             // Remove the worker task from the cache in case it can't complete.
                             tokenSource.Cancel();
-                            
+
                             // If an exception occurs, ensure the other awaiters
                             // render the output by themselves.
                             tcs.SetResult(null);
@@ -148,6 +149,17 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
             output.SuppressOutput();
 
             output.Content.SetHtmlContent(content);
+        }
+
+        private int GetSize(IHtmlContent content)
+        {
+            if(content is CharBufferHtmlContent charBuffer)
+            {
+                return charBuffer.Buffer.Length;
+            }
+
+            Debug.Fail($"{nameof(content)} should be an {nameof(CharBufferHtmlContent)}.");
+            return -1;
         }
 
         // Internal for unit testing
@@ -233,17 +245,19 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers
                 _buffer = buffer;
             }
 
+            public PagedCharBuffer Buffer => _buffer;
+
             public void WriteTo(TextWriter writer, HtmlEncoder encoder)
             {
-                var length = _buffer.Length;
+                var length = Buffer.Length;
                 if (length == 0)
                 {
                     return;
                 }
 
-                for (var i = 0; i < _buffer.Pages.Count; i++)
+                for (var i = 0; i < Buffer.Pages.Count; i++)
                 {
-                    var page = _buffer.Pages[i];
+                    var page = Buffer.Pages[i];
                     var pageLength = Math.Min(length, page.Length);
                     writer.Write(page, index: 0, count: pageLength);
                     length -= pageLength;

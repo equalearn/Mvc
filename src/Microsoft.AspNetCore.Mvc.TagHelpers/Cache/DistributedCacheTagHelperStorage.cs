@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Mvc.TagHelpers.Internal;
 using Microsoft.Extensions.Caching.Distributed;
 
 namespace Microsoft.AspNetCore.Mvc.TagHelpers.Cache
@@ -18,10 +19,10 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers.Cache
         /// <summary>
         /// Creates a new <see cref="DistributedCacheTagHelperStorage"/>.
         /// </summary>
-        /// <param name="distributedCache">The <see cref="IDistributedCache"/> to use.</param>
-        public DistributedCacheTagHelperStorage(IDistributedCache distributedCache)
+        /// <param name="cacheSelector">The <see cref="IDistributedCache"/> to use.</param>
+        public DistributedCacheTagHelperStorage(DistributedCacheSelector cacheSelector)
         {
-            _distributedCache = distributedCache;
+            _distributedCache = cacheSelector.GetCache(typeof(DistributedCacheTagHelper).FullName);
         }
 
         /// <inheritdoc />
@@ -31,7 +32,7 @@ namespace Microsoft.AspNetCore.Mvc.TagHelpers.Cache
             {
                 throw new ArgumentNullException(nameof(key));
             }
-            
+
             return _distributedCache.GetAsync(key);
         }
 
